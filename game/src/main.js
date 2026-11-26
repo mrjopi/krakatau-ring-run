@@ -482,3 +482,6 @@ if (SHOT) {
 }
 
 export { game, flight };
+
+// Debug/playtest handle: the live game state for automated checks.
+window.__game = { game, flight };

@@ -69,7 +69,9 @@ function stageLanding(ctx) {
 /**
  * Stage a named scene. Returns nothing; the caller renders one frame after.
  * Scenes: cover (mid-course, volcano + ring ahead), ring (threading a gate),
- * coast (low over the beach village), land (final approach to the runway).
+ * coast (high over the south beach: village + whole volcano), cockpit
+ * (from the canopy, next ring ahead with the crater behind it),
+ * land (final approach to the runway).
  */
 export function stageShot(name, ctx) {
   const { flight, game } = ctx;
@@ -87,13 +89,34 @@ export function stageShot(name, ctx) {
     runSteps(ctx, 26, steerToNextRing);
     return;
   }
+  if (name === 'cockpit') {
+    runSteps(ctx, 12, steerToNextRing);
+    // Frame the next ring with the volcano directly behind it: place the
+    // plane on the volcano-to-ring line, 220 m past the ring, looking back
+    // through the gate at the crater and its smoke.
+    const idx = Math.min(ctx.game.nextRing, ctx.ringCentres.length - 1);
+    const target = ctx.ringCentres[idx];
+    const len = Math.hypot(target.x, target.z) || 1;
+    const ux = target.x / len;
+    const uz = target.z / len;
+    flight.pos.set(target.x + ux * 220, target.y + 8, target.z + uz * 220);
+    flight.heading = Math.atan2(-(target.x - flight.pos.x), -(target.z - flight.pos.z));
+    flight.pitch = 0;
+    flight.roll = 0;
+    flight.speed = 55;
+    flight.throttle = 0.6;
+    game.cameraMode = 1;
+    return;
+  }
   if (name === 'coast') {
     runSteps(ctx, 34, steerToNextRing);
-    // Drop low over the south beach for the village shot.
-    flight.pos.set(60, 46, 430);
-    flight.heading = Math.PI / 2;
+    // Wide establishing shot from the south-west sea: beach and village
+    // mid-frame, the whole volcano cone with crater and smoke behind them,
+    // sea in front. Close-in poses filled the frame with one bare slope.
+    flight.pos.set(-350, 200, 800);
+    flight.heading = -0.41;
     flight.pitch = 0;
-    flight.roll = -0.25;
+    flight.roll = -0.1;
     flight.speed = 55;
     return;
   }
