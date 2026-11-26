@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krakatau Ring Run — a flight game</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1c26;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: #eef6fa; }
+  #scene { position: fixed; inset: 0; }
+  #scene canvas { display: block; }
+  #vignette { position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 68%, rgba(2, 12, 20, 0.32) 100%); }
+  #damage { position: fixed; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(255, 40, 20, 0.55) 100%);
+    transition: opacity 0.12s; }
+  #damage.show { opacity: 1; }
+
+  /* --- HUD --- */
+  .hud { position: fixed; inset: 0; pointer-events: none; display: none;
+    font-family: "SF Mono", "Cascadia Mono", Consolas, monospace; }
+  body[data-state="playing"] .hud, body[data-state="paused"] .hud, body[data-state="crashed"] .hud { display: block; }
+  .hud-top { position: absolute; top: 14px; left: 16px; display: flex; gap: 12px; }
+  .hud-box { background: rgba(6, 24, 34, 0.72); border: 1px solid rgba(127, 231, 255, 0.35);
+    border-radius: 6px; padding: 6px 12px; min-width: 74px; }
+  .hud-label { font-size: 10px; letter-spacing: 0.18em; color: #7fe7ff; opacity: 0.85; }
+  .hud-big { font-size: 24px; font-weight: 700; color: #fff; line-height: 1.15;
+    text-shadow: 0 0 12px rgba(127, 231, 255, 0.6); }
+  .hud-compass { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    width: 340px; height: 30px; overflow: hidden; background: rgba(6, 24, 34, 0.72);
+    border: 1px solid rgba(127, 231, 255, 0.35); border-radius: 6px; }
+  .hud-compass-strip { position: absolute; inset: 0; }
+  .hud-compass-strip span { position: absolute; top: 5px; transform: translateX(-50%);
+    font-size: 15px; font-weight: 700; color: #ffb400; }
+  .hud-compass-needle { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px;
+    background: #ff5a4e; transform: translateX(-50%); }
+  .hud-left { position: absolute; left: 16px; bottom: 96px; text-align: center; }
+  .hud-horizon { border-radius: 50%; border: 2px solid rgba(127, 231, 255, 0.5);
+    background: rgba(6, 24, 34, 0.6); }
+  .hud-right { position: absolute; right: 16px; top: 64px; display: flex; flex-direction: column; gap: 10px; }
+  .hud-right .hud-box { min-width: 132px; text-align: right; }
+  .hud-bottom { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+    display: flex; gap: 18px; align-items: flex-end; }
+  .hud-gauge { width: 190px; background: rgba(6, 24, 34, 0.72); border: 1px solid rgba(127, 231, 255, 0.35);
+    border-radius: 6px; padding: 6px 10px; }
+  .hud-bar { height: 12px; background: rgba(255, 255, 255, 0.12); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+  .hud-fill { height: 100%; transition: width 0.15s; }
+  .hud-fill-throttle { background: linear-gradient(90deg, #2f7fc9, #7fe7ff); }
+  .hud-fill-fuel { background: linear-gradient(90deg, #37d67a, #a5f2b8); }
+  .hud-fill-fuel.low { background: linear-gradient(90deg, #ff5a4e, #ffb400); }
+  .hud-map { border: 1px solid rgba(127, 231, 255, 0.35); border-radius: 6px; background: rgba(6, 24, 34, 0.6); }
+  .hud-flash { position: absolute; left: 50%; top: 26%; transform: translate(-50%, -50%) scale(0.92);
+    font-size: 30px; font-weight: 800; letter-spacing: 0.06em; color: #fff; opacity: 0;
+    text-shadow: 0 0 18px rgba(127, 231, 255, 0.9), 0 2px 0 rgba(0,0,0,0.4);
+    transition: opacity 0.18s, transform 0.18s; white-space: nowrap; }
+  .hud-flash.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .hud-flash.good { color: #7dff9e; }
+  .hud-flash.warn { color: #ffb400; }
+  .hud-flash.bad { color: #ff5a4e; }
+  .hud-hint { position: absolute; left: 50%; bottom: 86px; transform: translateX(-50%);
+    font-size: 12px; letter-spacing: 0.08em; color: rgba(238, 246, 250, 0.75);
+    background: rgba(6, 24, 34, 0.55); padding: 5px 12px; border-radius: 20px; white-space: nowrap; }
+
+  /* --- Overlays --- */
+  .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    background: rgba(4, 16, 24, 0.45); backdrop-filter: blur(2px); }
+  .overlay.visible { display: flex; }
+  .panel { text-align: center; max-width: 640px; padding: 34px 44px; background: rgba(5, 20, 30, 0.82);
+    border: 1px solid rgba(127, 231, 255, 0.35); border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
+  .panel h1 { margin: 0 0 4px; font-size: 46px; letter-spacing: 0.04em; color: #ffb400;
+    text-shadow: 0 0 24px rgba(255, 180, 0, 0.45); }
+  .panel h2 { margin: 0 0 10px; font-size: 30px; color: #fff; }
+  .panel p { margin: 10px 0; font-size: 15px; line-height: 1.55; color: #cfe3ec; }
+  .panel .tag { font-size: 12px; letter-spacing: 0.28em; color: #7fe7ff; }
+  .controls { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; text-align: left;
+    font-size: 13px; margin: 16px auto 6px; width: fit-content; color: #cfe3ec; }
+  .controls b { color: #ffb400; font-family: "SF Mono", Consolas, monospace; }
+  .btn { pointer-events: auto; cursor: pointer; margin-top: 18px; padding: 13px 34px; font-size: 17px;
+    font-weight: 700; letter-spacing: 0.08em; color: #08131a; background: #ffb400; border: 0;
+    border-radius: 8px; box-shadow: 0 6px 24px rgba(255, 180, 0, 0.45); }
+  .btn:hover { background: #ffc93c; }
+  .btn.ghost { background: transparent; color: #7fe7ff; border: 1px solid #7fe7ff; box-shadow: none; }
+  .stats { display: flex; gap: 26px; justify-content: center; margin: 14px 0 4px; }
+  .stats div { font-size: 12px; letter-spacing: 0.14em; color: #7fe7ff; }
+  .stats b { display: block; font-size: 28px; color: #fff; font-family: "SF Mono", Consolas, monospace; }
+  #over-best { color: #7dff9e; font-weight: 700; min-height: 20px; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>
+</head>
+<body data-state="title">
+<div id="scene"></div>
+<div id="vignette"></div>
+<div id="damage"></div>
+<div id="hud"></div>
+
+<div class="overlay visible" id="overlay-title">
+  <div class="panel">
+    <div class="tag">S U N D A &nbsp; S T R A I T &nbsp;·&nbsp; 1 8 8 3</div>
+    <h1>KRAKATAU<br>RING RUN</h1>
+    <p>Fly the KR-7 bush plane around a living volcano. Thread all twelve
+    glowing rings, stretch your fuel, and grease a touch-and-go on the beach
+    runway. Fast, low and smooth wins — the mountain does not forgive.</p>
+    <div class="controls">
+      <b>← → / Mouse</b><span>bank &amp; steer</span>
+      <b>↑ ↓</b><span>climb &amp; dive</span>
+      <b>W / S</b><span>throttle up / down</span>
+      <b>C</b><span>chase · cockpit · tracking camera</span>
+      <b>P</b><span>pause</span>
+      <b>R</b><span>restart sortie</span>
+    </div>
+    <div class="stats"><div>BEST SCORE<b id="best-title">0</b></div></div>
+    <button class="btn" id="start-btn">CLICK TO FLY</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-pause">
+  <div class="panel">
+    <h2>PAUSED</h2>
+    <p>The volcano waits. The fuel does not.</p>
+    <button class="btn" id="resume-btn">RESUME</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-over">
+  <div class="panel">
+    <div class="tag">S O R T I E &nbsp; O V E R</div>
+    <h2 id="over-title">TIME UP</h2>
+    <div id="over-best"></div>
+    <div class="stats">
+      <div>SCORE<b id="final-score">0</b></div>
+      <div>RINGS<b id="final-rings">0</b></div>
+      <div>BEST<b id="final-best">0</b></div>
+    </div>
+    <p>Best score on this machine: <b id="best-over">0</b></p>
+    <button class="btn" id="again-btn">FLY AGAIN</button>
+  </div>
+</div>
+
+<p id="status" role="status" aria-live="polite"></p>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
